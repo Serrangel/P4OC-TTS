@@ -3,6 +3,7 @@ package dev.blazelight.p4oc.ui.components.code
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -436,7 +437,8 @@ fun SyntaxHighlightedCode(
     filename: String,
     modifier: Modifier = Modifier,
     showLineNumbers: Boolean = true,
-    fontSize: Int = 12
+    fontSize: Int = 12,
+    selectable: Boolean = false
 ) {
     val language = remember(filename) { Language.fromFilename(filename) }
     val colors = SyntaxColors.default()
@@ -505,12 +507,23 @@ fun SyntaxHighlightedCode(
                     .horizontalScroll(horizontalScrollState)
                     .padding(Spacing.md)
             ) {
-                Text(
-                    text = highlightedCode,
-                    fontSize = fontSize.sp,
-                    fontFamily = FontFamily.Monospace,
-                    lineHeight = (fontSize * 1.5).sp
-                )
+                if (selectable) {
+                    SelectionContainer {
+                        Text(
+                            text = highlightedCode,
+                            fontSize = fontSize.sp,
+                            fontFamily = FontFamily.Monospace,
+                            lineHeight = (fontSize * 1.5).sp
+                        )
+                    }
+                } else {
+                    Text(
+                        text = highlightedCode,
+                        fontSize = fontSize.sp,
+                        fontFamily = FontFamily.Monospace,
+                        lineHeight = (fontSize * 1.5).sp
+                    )
+                }
             }
         }
     }

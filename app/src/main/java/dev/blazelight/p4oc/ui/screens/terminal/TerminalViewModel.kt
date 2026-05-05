@@ -9,6 +9,8 @@ import dev.blazelight.p4oc.core.network.ApiResult
 import dev.blazelight.p4oc.core.network.ConnectionManager
 import dev.blazelight.p4oc.core.network.PtyWebSocketClient
 import dev.blazelight.p4oc.core.network.safeApiCall
+import dev.blazelight.p4oc.data.remote.dto.PtySizeDto
+import dev.blazelight.p4oc.data.remote.dto.UpdatePtyRequest
 import dev.blazelight.p4oc.domain.model.OpenCodeEvent
 import dev.blazelight.p4oc.terminal.PtyTerminalClient
 import dev.blazelight.p4oc.terminal.WebSocketTerminalOutput
@@ -19,6 +21,8 @@ import java.lang.ref.WeakReference
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -39,6 +43,7 @@ class TerminalViewModel constructor(
         private const val DEFAULT_ROWS = 24
         private const val DEFAULT_COLS = 80
         private const val TRANSCRIPT_ROWS = 2000
+        private const val RESIZE_DEBOUNCE_MS = 150L
     }
 
     val ptyId: String = savedStateHandle.get<String>(Screen.Terminal.ARG_PTY_ID)
@@ -53,6 +58,7 @@ class TerminalViewModel constructor(
     private var terminalViewRef: WeakReference<TerminalView>? = null
     private var lastKnownCols = 0
     private var lastKnownRows = 0
+    private val pendingResize = MutableStateFlow<Pair<Int, Int>?>(null)
 
     fun setTerminalView(view: TerminalView) {
         terminalViewRef = WeakReference(view)
@@ -103,25 +109,7 @@ class TerminalViewModel constructor(
         // Resize the local emulator
         emulator?.resize(cols, rows)
         view.onScreenUpdated()
-        
-        // TODO: Notify server of new size when PATCH /pty/{id} endpoint is available
-        // Currently the OpenCode server doesn't support PTY resize via API
-        // Local emulator is resized correctly, but server-side PTY stays at default size
-        // viewModelScope.launch {
-        //     val api = connectionManager.getApi() ?: return@launch
-        //     val result = safeApiCall { 
-        //         api.updatePtySession(
-        //             ptyId, 
-        //             dev.blazelight.p4oc.data.remote.dto.UpdatePtyRequest(
-        //                 size = dev.blazelight.p4oc.data.remote.dto.PtySizeDto(rows, cols)
-        //             )
-        //         )
-        //     }
-        //     when (result) {
-        //         is ApiResult.Success -> Log.d(TAG, "PTY size updated to ${cols}x${rows}")
-        //         is ApiResult.Error -> Log.w(TAG, "PTY resize not supported by server")
-        //     }
-        // }
+        pendingResize.value = rows to cols
     }
 
     init {
@@ -131,8 +119,31 @@ class TerminalViewModel constructor(
         observeEvents()
         observeWebSocketOutput()
         observeWebSocketState()
+        observeResizeRequests()
     }
     
+    @OptIn(kotlinx.coroutines.FlowPreview::class)
+    private fun observeResizeRequests() {
+        viewModelScope.launch {
+            pendingResize
+                .filterNotNull()
+                .debounce(RESIZE_DEBOUNCE_MS)
+                .collect { (rows, cols) ->
+                    val api = connectionManager.getApi() ?: return@collect
+                    val result = safeApiCall {
+                        api.updatePtySession(
+                            ptyId,
+                            UpdatePtyRequest(size = PtySizeDto(rows = rows, cols = cols))
+                        )
+                    }
+                    when (result) {
+                        is ApiResult.Success -> AppLog.d(TAG, "PTY size updated to ${cols}x${rows}")
+                        is ApiResult.Error -> AppLog.w(TAG, "Failed to update PTY size: ${result.message}")
+                    }
+                }
+        }
+    }
+
     private fun fetchPtyDetails() {
         viewModelScope.launch {
             val api = connectionManager.getApi() ?: return@launch

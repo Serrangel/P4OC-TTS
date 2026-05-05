@@ -6,13 +6,16 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.lifecycle.Lifecycle
@@ -273,20 +276,112 @@ fun MainTabScreen(
                 .consumeWindowInsets(WindowInsets.statusBars)
         ) {
             // Tab bar (no longer needs its own statusBarsPadding)
-            TabBar(
-                tabs = tabs,
-                activeTabId = activeTabId,
-                tabTitles = tabTitles,
-                tabIcons = tabIcons,
-                tabConnectionStates = tabConnectionStates,
-                onTabClick = { tabId ->
-                    tabManager.focusTab(tabId)
-                },
-                onTabClose = closeTab,
-                onAddClick = {
-                    tabManager.createTab(focus = true)
-                },
-            )
+            // Wrapped in a Box so the New-tab DropdownMenu can anchor to the top-end,
+            // which visually aligns it near the + button inside TabBar.
+            var newTabMenuExpanded by remember { mutableStateOf(false) }
+            // Snapshot the active tab's workspace so each menu item inherits it.
+            // AGENTS.md: workspaceDirectory must come from the active tab — no globals.
+            val activeWorkspaceDirectory = tabs.firstOrNull { it.id == activeTabId }?.workspaceDirectory
+            Box(modifier = Modifier.fillMaxWidth()) {
+                TabBar(
+                    tabs = tabs,
+                    activeTabId = activeTabId,
+                    tabTitles = tabTitles,
+                    tabIcons = tabIcons,
+                    tabConnectionStates = tabConnectionStates,
+                    onTabClick = { tabId ->
+                        tabManager.focusTab(tabId)
+                    },
+                    onTabClose = closeTab,
+                    onAddClick = {
+                        newTabMenuExpanded = true
+                    },
+                )
+                // Anchor the dropdown to the top-end of the TabBar (where the + button lives).
+                Box(modifier = Modifier.align(Alignment.TopEnd)) {
+                    DropdownMenu(
+                        expanded = newTabMenuExpanded,
+                        onDismissRequest = { newTabMenuExpanded = false },
+                        modifier = Modifier.testTag("tab_bar_add_menu")
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("New Sessions tab") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.List,
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                newTabMenuExpanded = false
+                                tabManager.createTab(
+                                    startRoute = Screen.Sessions.route,
+                                    workspaceDirectory = activeWorkspaceDirectory,
+                                    focus = true,
+                                )
+                            },
+                            modifier = Modifier.testTag("tab_bar_add_menu_sessions")
+                        )
+                        DropdownMenuItem(
+                            text = { Text("New Files tab") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                newTabMenuExpanded = false
+                                tabManager.createTab(
+                                    startRoute = Screen.Files.route,
+                                    workspaceDirectory = activeWorkspaceDirectory,
+                                    focus = true,
+                                )
+                            },
+                            modifier = Modifier.testTag("tab_bar_add_menu_files")
+                        )
+                        DropdownMenuItem(
+                            text = { Text("New Terminal tab") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Terminal,
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                newTabMenuExpanded = false
+                                // Terminal tabs require a server-side PTY, mirroring the
+                                // existing onNewTerminalTab callback flow further below.
+                                coroutineScope.launch {
+                                    val api = connectionManager.getApi() ?: run {
+                                        AppLog.e(TAG, "Cannot create terminal: not connected")
+                                        snackbarHostState.showSnackbar("Not connected to server")
+                                        return@launch
+                                    }
+                                    val result = safeApiCall { api.createPtySession(CreatePtyRequest()) }
+                                    when (result) {
+                                        is ApiResult.Success -> {
+                                            val ptyId = result.data.id
+                                            tabManager.createTab(
+                                                startRoute = Screen.Terminal.createRoute(ptyId),
+                                                workspaceDirectory = activeWorkspaceDirectory,
+                                                focus = true,
+                                            )
+                                        }
+                                        is ApiResult.Error -> {
+                                            AppLog.e(TAG, "Failed to create PTY: ${result.message}")
+                                            snackbarHostState.showSnackbar(
+                                                "Failed to create terminal: ${result.message}"
+                                            )
+                                        }
+                                    }
+                                }
+                            },
+                            modifier = Modifier.testTag("tab_bar_add_menu_terminal")
+                        )
+                    }
+                }
+            }
             
             // Pager state for swipe between tabs
             val pagerState = rememberPagerState(

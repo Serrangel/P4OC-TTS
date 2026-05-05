@@ -97,7 +97,8 @@ fun FileViewerScreen(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(Spacing.md),
-                        showLineNumbers = showLineNumbers
+                        showLineNumbers = showLineNumbers,
+                        selectable = true
                     )
                 }
                 error != null -> {
