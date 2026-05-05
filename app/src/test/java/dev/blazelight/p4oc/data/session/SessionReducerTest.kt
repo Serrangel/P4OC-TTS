@@ -36,6 +36,22 @@ class SessionReducerTest {
     }
 
     @Test
+    fun `OFISH session created is ignored`() {
+        val result = reducer.reduce(Snapshot(), OpenCodeEvent.SessionCreated(session("ofish", title = "__ofish_probe_1_x")))
+
+        assertFalse(result.sessions.containsKey("ofish"))
+    }
+
+    @Test
+    fun `OFISH session updated is ignored`() {
+        val initial = Snapshot(mapOf("same" to workspaceSession("same", title = "Old")))
+
+        val result = reducer.reduce(initial, OpenCodeEvent.SessionUpdated(session("same", title = "__ofish_probe_1_x")))
+
+        assertEquals("Old", result.sessions.getValue("same").session.title)
+    }
+
+    @Test
     fun `session deleted removes session`() {
         val initial = Snapshot(mapOf("gone" to workspaceSession("gone")))
 

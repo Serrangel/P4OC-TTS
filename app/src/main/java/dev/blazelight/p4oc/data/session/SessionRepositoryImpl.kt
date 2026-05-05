@@ -1,6 +1,7 @@
 package dev.blazelight.p4oc.data.session
 
 import dev.blazelight.p4oc.core.log.AppLog
+import dev.blazelight.p4oc.data.files.ofish.OfishSessionNames
 import dev.blazelight.p4oc.data.remote.dto.CreateSessionRequest
 import dev.blazelight.p4oc.data.remote.dto.ProjectDto
 import dev.blazelight.p4oc.data.remote.dto.UpdateSessionRequest
@@ -244,6 +245,7 @@ class SessionRepositoryImpl(
                             AppLog.e(TAG, "Failed to load global sessions: ${error.message}")
                             emptyList()
                         }
+                        .filterNot { dto -> OfishSessionNames.isOfishTitle(dto.title) }
                         .map { dto -> workspaceSession(SessionMapper.mapToDomain(dto)) }
 
                     val projectSessions = projectDeferreds.awaitAll().flatMap { (result, project) ->
@@ -252,7 +254,8 @@ class SessionRepositoryImpl(
                                 AppLog.e(TAG, "Failed to load sessions for ${project.worktree}: ${error.message}")
                                 emptyList()
                             }
-                            .map { dto -> workspaceSession(SessionMapper.mapToDomain(dto)) }
+                            .filterNot { dto -> OfishSessionNames.isOfishTitle(dto.title) }
+                        .map { dto -> workspaceSession(SessionMapper.mapToDomain(dto)) }
                     }
 
                     val projectSessionIds = projectSessions.map { it.id.value }.toSet()

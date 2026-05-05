@@ -153,6 +153,24 @@ class SessionRepositoryImplTest {
     }
 
     @Test
+    fun `hydrate filters OFISH sessions from visible state`() = runTest {
+        val client = FakeWorkspaceClient().apply {
+            projects = emptyList()
+            setSessions(
+                FakeWorkspaceClient.sessionDto(id = "normal", title = "Normal"),
+                FakeWorkspaceClient.sessionDto(id = "ofish", title = "__ofish_probe_1_x"),
+            )
+        }
+        val repository = SessionRepositoryImpl(client, nowMs = { testScheduler.currentTime }, dispatcher = StandardTestDispatcher(testScheduler))
+
+        repository.refresh()
+
+        val sessions = repository.state.value.snapshot.sessions
+        assertTrue(sessions.containsKey("normal"))
+        assertFalse(sessions.containsKey("ofish"))
+    }
+
+    @Test
     fun `SSE event during hydrate appears in final state`() = runTest {
         val client = FakeWorkspaceClient().apply {
             projects = listOf(FakeWorkspaceClient.projectDto("p1", "/repo/p1"))
