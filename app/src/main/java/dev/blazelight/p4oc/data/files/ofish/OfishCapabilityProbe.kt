@@ -6,10 +6,10 @@ import dev.blazelight.p4oc.data.remote.dto.ShellCommandRequest
 /**
  * Executes the OFISH shell-environment capability probe in an ephemeral session.
  *
- * If this probe is wired into production and its shell execution can trigger server permission
- * requests, the integration must register the ephemeral session with the conservative OFISH
- * permission auto-approver / SSE broker before executing the command. This class currently has no
- * production callsite and intentionally does not auto-approve permissions by itself.
+ * Production repository construction wires this probe, but ephemeral OFISH shell sessions are not yet
+ * registered with a permission broker. This class intentionally does not auto-approve permissions by
+ * itself; if the server requires approval for the probe command, probing fails conservatively instead
+ * of inventing call IDs or broadly approving shell permissions.
  */
 internal class OfishCapabilityProbe(
     private val client: OfishWorkspaceClient,
@@ -26,7 +26,7 @@ internal class OfishCapabilityProbe(
                     command = OfishCapabilityProbeCommand.build(),
                 ),
             )
-            OfishCapabilityParser.parse(OfishProbeOutputExtractor.extract(response))
+            OfishCapabilityParser.parse(OfishShellOutputExtractor.extract(response))
         }
     }.getOrElse { error ->
         OfishProbeResult.Failed("OFISH capability probe failed", error)
@@ -38,7 +38,7 @@ internal class OfishCapabilityProbe(
     }
 }
 
-internal object OfishProbeOutputExtractor {
+internal object OfishShellOutputExtractor {
     fun extract(message: MessageWrapperDto): String = buildString {
         message.parts.forEach { part ->
             part.text?.takeIf { it.isNotBlank() }?.let { appendLine(it) }

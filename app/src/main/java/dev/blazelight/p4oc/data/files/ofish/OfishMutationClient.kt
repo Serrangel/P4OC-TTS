@@ -1,0 +1,233 @@
+package dev.blazelight.p4oc.data.files.ofish
+
+import dev.blazelight.p4oc.core.log.AppLog
+import dev.blazelight.p4oc.data.files.FileOperationResult
+import dev.blazelight.p4oc.data.files.FilePathValidator
+import dev.blazelight.p4oc.data.files.FileUploadRequest
+import dev.blazelight.p4oc.data.files.FileUploadResult
+import dev.blazelight.p4oc.data.files.FileWriteRequest
+import dev.blazelight.p4oc.data.files.FileWriteResult
+import dev.blazelight.p4oc.data.remote.dto.ShellCommandRequest
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+
+internal class OfishMutationClient(
+    private val client: OfishWorkspaceClient,
+    private val sessionFactory: OfishSessionFactory,
+    private val capabilityCache: CachedOfishCapabilities,
+    private val commandBuilder: OfishCommandBuilder = OfishCommandBuilder(),
+    private val shellAgent: String = DEFAULT_SHELL_AGENT,
+    // TODO(oa-0qgz): tune the transport chunk size from empirical upload benchmarks.
+    private val uploadChunkBytes: Int = DEFAULT_UPLOAD_CHUNK_BYTES,
+) {
+    init {
+        require(uploadChunkBytes > 0) { "uploadChunkBytes must be greater than zero" }
+    }
+
+    suspend fun mutationCapabilities(): OfishProbeResult = capabilityCache.get()
+
+    suspend fun writeFile(request: FileWriteRequest): FileOperationResult<FileWriteResult> {
+        val path = normalizeMutationPath(request.path).getOrElse { error ->
+            return FileOperationResult.Failed(error.message ?: INVALID_PATH_MESSAGE, error)
+        }
+        val capabilities = availableCapabilities().getOrElse { error ->
+            return FileOperationResult.Failed(error.message ?: UNAVAILABLE_MESSAGE, error)
+        }
+
+        return runCatching {
+            sessionFactory.withSession(OPERATION_WRITE) { session ->
+                execute(session.id, commandBuilder.write(path, request.content, request.expectedHash, capabilities))
+                    .toWriteResult(path)
+            }
+        }.getOrElse { error -> FileOperationResult.Failed("OFISH write failed", error) }
+    }
+
+    suspend fun deleteFile(path: String): FileOperationResult<Unit> {
+        val normalizedPath = normalizeMutationPath(path).getOrElse { error ->
+            return FileOperationResult.Failed(error.message ?: INVALID_PATH_MESSAGE, error)
+        }
+        availableCapabilities().getOrElse { error ->
+            return FileOperationResult.Failed(error.message ?: UNAVAILABLE_MESSAGE, error)
+        }
+
+        return runCatching {
+            sessionFactory.withSession(OPERATION_DELETE) { session ->
+                execute(session.id, commandBuilder.delete(normalizedPath)).toDeleteResult()
+            }
+        }.getOrElse { error -> FileOperationResult.Failed("OFISH delete failed", error) }
+    }
+
+    suspend fun uploadFile(request: FileUploadRequest): FileOperationResult<FileUploadResult> {
+        val path = normalizeMutationPath(request.path).getOrElse { error ->
+            return FileOperationResult.Failed(error.message ?: INVALID_PATH_MESSAGE, error)
+        }
+        val capabilities = availableCapabilities().getOrElse { error ->
+            return FileOperationResult.Failed(error.message ?: UNAVAILABLE_MESSAGE, error)
+        }
+
+        return runCatching {
+            sessionFactory.withSession(OPERATION_UPLOAD) { session ->
+                uploadInSession(session.id, path, request, capabilities)
+            }
+        }.getOrElse { error -> FileOperationResult.Failed("OFISH upload failed", error) }
+    }
+
+    private suspend fun uploadInSession(
+        sessionId: String,
+        path: String,
+        request: FileUploadRequest,
+        capabilities: OfishCapabilities,
+    ): FileOperationResult<FileUploadResult> {
+        val initStatus = execute(sessionId, commandBuilder.uploadInit(path, request.expectedHash, capabilities))
+        val uploadToken = when (initStatus) {
+            is OfishMutationStatus.Ok -> initStatus.uploadToken
+            else -> return initStatus.toUploadResult(path)
+        } ?: return FileOperationResult.Failed("Malformed OFISH upload init response: missing upload token")
+        validateUploadToken(uploadToken, path).getOrElse { error ->
+            return FileOperationResult.Failed(error.message ?: "Unsafe OFISH upload token", error)
+        }
+
+        var finished = false
+        try {
+            var offset = 0
+            while (offset < request.bytes.size) {
+                val end = minOf(offset + uploadChunkBytes, request.bytes.size)
+                val chunk = request.bytes.copyOfRange(offset, end)
+                when (val chunkStatus = execute(sessionId, commandBuilder.uploadChunk(uploadToken, chunk, capabilities))) {
+                    is OfishMutationStatus.Ok -> Unit
+                    else -> return chunkStatus.toUploadResult(path)
+                }
+                offset = end
+            }
+
+            val finishStatus = execute(sessionId, commandBuilder.uploadFinish(path, uploadToken, request.expectedHash, capabilities))
+            val result = finishStatus.toUploadResult(path)
+            if (result is FileOperationResult.Ok) finished = true
+            return result
+        } finally {
+            if (!finished) {
+                withContext(NonCancellable) {
+                    runCatching { execute(sessionId, commandBuilder.uploadAbort(uploadToken)) }
+                        .onFailure { error -> AppLog.w(TAG, "Failed to abort OFISH upload temp file: ${error.message}") }
+                }
+            }
+        }
+    }
+
+    private fun validateUploadToken(uploadToken: String, destinationPath: String): Result<String> {
+        if (uploadToken.isBlank()) return Result.failure(UnsafeUploadTokenException("Empty OFISH upload token"))
+        if (uploadToken.startsWith("/")) return Result.failure(UnsafeUploadTokenException("Absolute OFISH upload token is not allowed"))
+        val normalized = FilePathValidator.normalizeForMutation(uploadToken).getOrElse { error ->
+            return Result.failure(UnsafeUploadTokenException(error.message ?: "Unsafe OFISH upload token", error))
+        }
+
+        val expectedParent = OfishCommandBuilder.parentDirectory(destinationPath)
+        val expectedSegments = if (expectedParent == ".") emptyList() else expectedParent.split('/')
+        val tokenSegments = normalized.split('/')
+        if (tokenSegments.size != expectedSegments.size + 1) {
+            return Result.failure(UnsafeUploadTokenException("OFISH upload token must be a direct spool file"))
+        }
+        if (tokenSegments.take(expectedSegments.size) != expectedSegments) {
+            return Result.failure(UnsafeUploadTokenException("OFISH upload token is outside expected spool path"))
+        }
+
+        val filename = tokenSegments.last()
+        val suffix = filename.removePrefix(UPLOAD_TOKEN_PREFIX)
+        if (filename == suffix || suffix.isEmpty()) {
+            return Result.failure(UnsafeUploadTokenException("OFISH upload token must use the expected spool filename"))
+        }
+        return Result.success(normalized)
+    }
+
+    private suspend fun execute(sessionId: String, command: String): OfishMutationStatus {
+        val response = client.executeShellCommand(
+            sessionId = sessionId,
+            request = ShellCommandRequest(
+                agent = shellAgent,
+                model = null,
+                command = command,
+            ),
+        )
+        return OfishMutationParser.parse(OfishShellOutputExtractor.extract(response))
+    }
+
+    private suspend fun availableCapabilities(): Result<OfishCapabilities> = when (val result = capabilityCache.get()) {
+        is OfishProbeResult.Available -> Result.success(result.capabilities)
+        is OfishProbeResult.Missing -> Result.failure(OfishUnavailableException("OFISH file mutations unavailable: ${result.missing.joinToString()}", null))
+        is OfishProbeResult.Failed -> Result.failure(OfishUnavailableException(result.message, result.cause))
+    }
+
+    private fun normalizeMutationPath(path: String): Result<String> = FilePathValidator.normalizeForMutation(path)
+
+    private fun OfishMutationStatus.toWriteResult(path: String): FileOperationResult<FileWriteResult> = when (this) {
+        is OfishMutationStatus.Ok -> FileOperationResult.Ok(FileWriteResult(path = path, hash = hash))
+        is OfishMutationStatus.Conflict -> FileOperationResult.Conflict("File was modified before write", actualHash)
+        OfishMutationStatus.Missing -> FileOperationResult.Conflict("File does not exist", currentHash = null)
+        is OfishMutationStatus.PreconditionFailed -> FileOperationResult.Failed("Write precondition failed${reasonSuffix()}")
+        is OfishMutationStatus.CapabilitiesMissing -> FileOperationResult.Failed("OFISH file mutations unavailable: ${missing.joinToString()}")
+        is OfishMutationStatus.Failed -> FileOperationResult.Failed(messageWithReason())
+        is OfishMutationStatus.Malformed -> FileOperationResult.Failed(message)
+        OfishMutationStatus.Deleted -> FileOperationResult.Failed("Unexpected OFISH write delete status")
+    }
+
+    private fun OfishMutationStatus.toDeleteResult(): FileOperationResult<Unit> = when (this) {
+        OfishMutationStatus.Deleted -> FileOperationResult.Ok(Unit)
+        OfishMutationStatus.Missing -> FileOperationResult.Failed("File does not exist")
+        is OfishMutationStatus.PreconditionFailed -> FileOperationResult.Failed(
+            if (reason == "directory") "Directory deletion is not supported" else "Delete precondition failed${reasonSuffix()}"
+        )
+        is OfishMutationStatus.CapabilitiesMissing -> FileOperationResult.Failed("OFISH file mutations unavailable: ${missing.joinToString()}")
+        is OfishMutationStatus.Failed -> FileOperationResult.Failed(messageWithReason())
+        is OfishMutationStatus.Malformed -> FileOperationResult.Failed(message)
+        is OfishMutationStatus.Conflict -> FileOperationResult.Conflict("File was modified before delete", actualHash)
+        is OfishMutationStatus.Ok -> FileOperationResult.Failed("Unexpected OFISH delete ok status")
+    }
+
+    private fun OfishMutationStatus.toUploadResult(path: String): FileOperationResult<FileUploadResult> = when (this) {
+        is OfishMutationStatus.Ok -> FileOperationResult.Ok(FileUploadResult(path = path, hash = hash))
+        is OfishMutationStatus.Conflict -> FileOperationResult.Conflict("File was modified before upload", actualHash)
+        OfishMutationStatus.Missing -> FileOperationResult.Conflict("File does not exist", currentHash = null)
+        is OfishMutationStatus.PreconditionFailed -> FileOperationResult.Failed("Upload precondition failed${reasonSuffix()}")
+        is OfishMutationStatus.CapabilitiesMissing -> FileOperationResult.Failed("OFISH file mutations unavailable: ${missing.joinToString()}")
+        is OfishMutationStatus.Failed -> FileOperationResult.Failed(messageWithReason())
+        is OfishMutationStatus.Malformed -> FileOperationResult.Failed(message)
+        OfishMutationStatus.Deleted -> FileOperationResult.Failed("Unexpected OFISH upload delete status")
+    }
+
+    private fun OfishMutationStatus.PreconditionFailed.reasonSuffix(): String = reason?.let { ": $it" }.orEmpty()
+
+    private fun OfishMutationStatus.Failed.messageWithReason(): String = reason?.let { "$message: $it" } ?: message
+
+    private companion object {
+        const val TAG = "OfishMutationClient"
+        const val DEFAULT_SHELL_AGENT = "build"
+        const val DEFAULT_UPLOAD_CHUNK_BYTES = 256 * 1024
+        const val INVALID_PATH_MESSAGE = "Invalid file path"
+        const val UNAVAILABLE_MESSAGE = "OFISH file mutations unavailable"
+        const val OPERATION_WRITE = "write"
+        const val OPERATION_DELETE = "delete"
+        const val OPERATION_UPLOAD = "upload"
+        const val UPLOAD_TOKEN_PREFIX = ".ofish.upload."
+    }
+}
+
+internal open class CachedOfishCapabilities(
+    private val probe: OfishCapabilityProbe,
+) {
+    private val mutex = Mutex()
+    private var cached: OfishProbeResult? = null
+
+    open suspend fun get(): OfishProbeResult {
+        cached?.let { return it }
+        return mutex.withLock {
+            cached?.let { return@withLock it }
+            probe.probe().also { cached = it }
+        }
+    }
+}
+
+private class OfishUnavailableException(message: String, cause: Throwable?) : Exception(message, cause)
+
+private class UnsafeUploadTokenException(message: String, cause: Throwable? = null) : Exception(message, cause)

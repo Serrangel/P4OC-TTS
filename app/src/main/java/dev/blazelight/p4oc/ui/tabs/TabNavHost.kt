@@ -24,7 +24,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.navArgument
-import dev.blazelight.p4oc.data.files.WorkspaceFileRepository
+import dev.blazelight.p4oc.data.files.FileRepositoryFactory
 import dev.blazelight.p4oc.domain.model.SessionConnectionState
 import dev.blazelight.p4oc.domain.server.ServerGeneration
 import dev.blazelight.p4oc.domain.server.ServerRef
@@ -326,7 +326,7 @@ fun TabNavHost(
             val workspaceViewModel = TouchWorkspaceViewModel(navController, workspaceRoute, tabId, workspace, generation, backStackEntry.destination.route)
             FileExplorerScreen(
                 viewModel = remember(workspaceViewModel) {
-                    FilesViewModel(WorkspaceFileRepository(workspaceViewModel.workspaceClient))
+                    FilesViewModel(FileRepositoryFactory.create(workspaceViewModel.workspaceClient))
                 },
                 onFileClick = { path ->
                     navController.navigate(Screen.FileViewer.createRoute(path))
@@ -347,7 +347,7 @@ fun TabNavHost(
             FileViewerScreen(
                 path = Uri.decode(encodedPath),
                 viewModel = remember(workspaceViewModel) {
-                    FilesViewModel(WorkspaceFileRepository(workspaceViewModel.workspaceClient))
+                    FilesViewModel(FileRepositoryFactory.create(workspaceViewModel.workspaceClient))
                 },
                 onNavigateBack = { navController.popBackStack() }
             )
