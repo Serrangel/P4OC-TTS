@@ -14,7 +14,6 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -39,103 +38,7 @@ class DialogQueueManagerTest {
     }
 
     @Test
-    fun enqueuePermission_showsImmediately_whenNoCurrentPermission() {
-        val handle = SavedStateHandle()
-        val manager = DialogQueueManager(handle, json)
-        val permission = permission(id = "p1", callId = "c1")
-
-        manager.enqueuePermission(permission)
-
-        assertEquals(permission, manager.pendingPermission.value)
-        assertEquals(json.encodeToString(permission), handle.get<String>(KEY_PENDING_PERMISSION))
-    }
-
-    @Test
-    fun enqueuePermission_queues_whenPermissionAlreadyShowing() {
-        val handle = SavedStateHandle()
-        val manager = DialogQueueManager(handle, json)
-        val first = permission(id = "p1", callId = "c1")
-        val second = permission(id = "p2", callId = "c2")
-
-        manager.enqueuePermission(first)
-        manager.enqueuePermission(second)
-
-        assertEquals(first, manager.pendingPermission.value)
-        val queuedJson = handle.get<String>(KEY_PENDING_PERMISSIONS_QUEUE)
-        assertNotNull(queuedJson)
-        assertTrue(queuedJson!!.contains("p2"))
-    }
-
-    @Test
-    fun clearPermission_advancesToNextInQueue() {
-        val handle = SavedStateHandle()
-        val manager = DialogQueueManager(handle, json)
-        val first = permission(id = "p1", callId = "c1")
-        val second = permission(id = "p2", callId = "c2")
-
-        manager.enqueuePermission(first)
-        manager.enqueuePermission(second)
-        manager.clearPermission(first.id)
-
-        assertEquals(second, manager.pendingPermission.value)
-    }
-
-    @Test
-    fun clearPermission_clears_whenQueueEmpty() {
-        val handle = SavedStateHandle()
-        val manager = DialogQueueManager(handle, json)
-        val only = permission(id = "p1", callId = "c1")
-
-        manager.enqueuePermission(only)
-        manager.clearPermission(only.id)
-
-        assertNull(manager.pendingPermission.value)
-        assertNull(handle.get<String>(KEY_PENDING_PERMISSION))
-        assertNull(handle.get<String>(KEY_PENDING_PERMISSIONS_QUEUE))
-    }
-
-    @Test
-    fun permission_persistedToSavedStateHandle_forProcessDeath() {
-        val handle = SavedStateHandle()
-        val manager = DialogQueueManager(handle, json)
-        val permission = permission(id = "p1", callId = "c1")
-
-        manager.enqueuePermission(permission)
-
-        assertEquals(json.encodeToString(permission), handle.get<String>(KEY_PENDING_PERMISSION))
-    }
-
-    @Test
-    fun restoresPendingPermission_fromSavedStateHandle_onInit() {
-        val permission = permission(id = "p1", callId = "c1")
-        val handle = SavedStateHandle(
-            mapOf(KEY_PENDING_PERMISSION to json.encodeToString(permission))
-        )
-
-        val manager = DialogQueueManager(handle, json)
-
-        assertEquals(permission, manager.pendingPermission.value)
-    }
-
-    @Test
-    fun restoresPermissionQueue_fromSavedStateHandle_onInit() {
-        val current = permission(id = "p-current", callId = "c-current")
-        val queued = listOf(permission(id = "p-queued", callId = "c-queued"))
-        val handle = SavedStateHandle(
-            mapOf(
-                KEY_PENDING_PERMISSION to json.encodeToString(current),
-                KEY_PENDING_PERMISSIONS_QUEUE to json.encodeToString(queued)
-            )
-        )
-
-        val manager = DialogQueueManager(handle, json)
-        manager.clearPermission(current.id)
-
-        assertEquals("p-queued", manager.pendingPermission.value?.id)
-    }
-
-    @Test
-    fun enqueuePermission_addsToPendingPermissionsByCallId_map() {
+    fun enqueuePermission_addsPermissionByCallId() {
         val handle = SavedStateHandle()
         val manager = DialogQueueManager(handle, json)
         val permission = permission(id = "p1", callId = "call-1")
@@ -146,11 +49,50 @@ class DialogQueueManagerTest {
     }
 
     @Test
+    fun enqueuePermission_withNullCallIdDoesNotAddAnything() {
+        val handle = SavedStateHandle()
+        val manager = DialogQueueManager(handle, json)
+        val permission = permission(id = "p1", callId = null)
+
+        manager.enqueuePermission(permission)
+
+        assertTrue(manager.pendingPermissionsByCallId.value.isEmpty())
+    }
+
+    @Test
+    fun clearPermission_removesMatchingPermissionById() {
+        val handle = SavedStateHandle()
+        val manager = DialogQueueManager(handle, json)
+        val first = permission(id = "p1", callId = "call-1")
+        val second = permission(id = "p2", callId = "call-2")
+
+        manager.enqueuePermission(first)
+        manager.enqueuePermission(second)
+        manager.clearPermission(first.id)
+
+        assertNull(manager.pendingPermissionsByCallId.value["call-1"])
+        assertEquals(second, manager.pendingPermissionsByCallId.value["call-2"])
+    }
+
+    @Test
+    fun clearPermissionByRequestId_removesMatchingPermissionById() {
+        val handle = SavedStateHandle()
+        val manager = DialogQueueManager(handle, json)
+        val first = permission(id = "request-1", callId = "call-1")
+        val second = permission(id = "request-2", callId = "call-2")
+
+        manager.enqueuePermission(first)
+        manager.enqueuePermission(second)
+        manager.clearPermissionByRequestId("request-1")
+
+        assertNull(manager.pendingPermissionsByCallId.value["call-1"])
+        assertEquals(second, manager.pendingPermissionsByCallId.value["call-2"])
+    }
+
+    @Test
     fun corruptSavedStateHandleData_doesNotCrash() {
         val handle = SavedStateHandle(
             mapOf(
-                KEY_PENDING_PERMISSION to "{not-json}",
-                KEY_PENDING_PERMISSIONS_QUEUE to "[bad-json",
                 KEY_PENDING_QUESTION to "{bad-json}",
                 KEY_PENDING_QUESTIONS_QUEUE to "[bad-json"
             )
@@ -158,10 +100,7 @@ class DialogQueueManagerTest {
 
         val manager = DialogQueueManager(handle, json)
 
-        assertNull(manager.pendingPermission.value)
         assertNull(manager.pendingQuestion.value)
-        assertNull(handle.get<String>(KEY_PENDING_PERMISSION))
-        assertNull(handle.get<String>(KEY_PENDING_PERMISSIONS_QUEUE))
         assertNull(handle.get<String>(KEY_PENDING_QUESTION))
         assertNull(handle.get<String>(KEY_PENDING_QUESTIONS_QUEUE))
     }
@@ -237,7 +176,5 @@ class DialogQueueManagerTest {
     private companion object {
         const val KEY_PENDING_QUESTION = "pending_question"
         const val KEY_PENDING_QUESTIONS_QUEUE = "pending_questions_queue"
-        const val KEY_PENDING_PERMISSION = "pending_permission"
-        const val KEY_PENDING_PERMISSIONS_QUEUE = "pending_permissions_queue"
     }
 }

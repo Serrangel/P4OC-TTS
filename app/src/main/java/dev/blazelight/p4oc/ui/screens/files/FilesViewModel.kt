@@ -2,10 +2,8 @@ package dev.blazelight.p4oc.ui.screens.files
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dev.blazelight.p4oc.core.network.ApiResult
-import dev.blazelight.p4oc.core.network.safeApiCall
-import dev.blazelight.p4oc.data.remote.mapper.SymbolMapper
-import dev.blazelight.p4oc.data.workspace.WorkspaceClient
+import dev.blazelight.p4oc.data.files.FileOperationResult
+import dev.blazelight.p4oc.data.files.FileRepository
 import dev.blazelight.p4oc.domain.model.FileNode
 import dev.blazelight.p4oc.domain.model.Symbol
 import kotlinx.coroutines.Job
@@ -15,9 +13,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-
 class FilesViewModel constructor(
-    private val workspaceClient: WorkspaceClient
+    private val fileRepository: FileRepository,
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(FilesUiState())
@@ -49,44 +46,25 @@ class FilesViewModel constructor(
     }
 
     private fun loadFiles(path: String) {
-        val canonicalPath = path.canonicalFilePath()
         loadFilesJob?.cancel()
         loadFilesJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
-            
-            val filesResult = safeApiCall { workspaceClient.listFiles(canonicalPath.ifBlank { "." }) }
-            val statusResult = safeApiCall { workspaceClient.getFileStatus() }
-            
-            val statusMap = when (statusResult) {
-                is ApiResult.Success -> statusResult.data.associateBy { it.path }
-                is ApiResult.Error -> emptyMap()
-            }
 
-            when (filesResult) {
-                is ApiResult.Success -> {
-                    val files = filesResult.data.map { dto ->
-                        FileNode(
-                            name = dto.name,
-                            path = dto.path,
-                            absolute = dto.absolute,
-                            type = dto.type,
-                            ignored = dto.ignored,
-                            gitStatus = statusMap[dto.path]?.status
-                        )
-                    }.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
-
+            when (val result = fileRepository.listFiles(path)) {
+                is FileOperationResult.Ok -> {
                     _uiState.update {
                         it.copy(
                             isLoading = false,
-                            files = files,
-                            currentPath = canonicalPath
+                            files = result.data.files,
+                            currentPath = result.data.path,
                         )
                     }
                 }
-                is ApiResult.Error -> {
-                    _uiState.update {
-                        it.copy(isLoading = false, error = filesResult.message)
-                    }
+                is FileOperationResult.Conflict -> {
+                    _uiState.update { it.copy(isLoading = false, error = result.message) }
+                }
+                is FileOperationResult.Failed -> {
+                    _uiState.update { it.copy(isLoading = false, error = result.message) }
                 }
             }
         }
@@ -96,33 +74,33 @@ class FilesViewModel constructor(
         viewModelScope.launch {
             _symbolResults.value = emptyList()
             if (query.isBlank()) return@launch
-            val result = safeApiCall { workspaceClient.searchSymbols(query) }
-            when (result) {
-                is ApiResult.Success -> {
-                    _symbolResults.value = result.data.map { SymbolMapper.mapToDomain(it) }
+
+            when (val result = fileRepository.searchSymbols(query)) {
+                is FileOperationResult.Ok -> {
+                    _symbolResults.value = result.data
                 }
-                is ApiResult.Error -> { /* Silently fail for search */ }
+                is FileOperationResult.Conflict,
+                is FileOperationResult.Failed -> { /* Silently fail for search */ }
             }
         }
     }
 
     fun loadFileContent(path: String) {
-        val canonicalPath = path.canonicalFilePath()
         loadContentJob?.cancel()
         loadContentJob = viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, fileContent = null, error = null) }
-            val result = safeApiCall { workspaceClient.readFile(canonicalPath) }
 
-            when (result) {
-                is ApiResult.Success -> {
+            when (val result = fileRepository.readFile(path)) {
+                is FileOperationResult.Ok -> {
                     _uiState.update {
                         it.copy(isLoading = false, fileContent = result.data.content)
                     }
                 }
-                is ApiResult.Error -> {
-                    _uiState.update {
-                        it.copy(isLoading = false, error = result.message)
-                    }
+                is FileOperationResult.Conflict -> {
+                    _uiState.update { it.copy(isLoading = false, error = result.message) }
+                }
+                is FileOperationResult.Failed -> {
+                    _uiState.update { it.copy(isLoading = false, error = result.message) }
                 }
             }
         }
@@ -138,9 +116,5 @@ data class FilesUiState(
     val files: List<FileNode> = emptyList(),
     val currentPath: String = "",
     val fileContent: String? = null,
-    val error: String? = null
+    val error: String? = null,
 )
-
-private fun String.canonicalFilePath(): String = trim().trim('/').let { path ->
-    if (path == ".") "" else path
-}

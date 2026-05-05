@@ -154,7 +154,7 @@ class ChatViewModelTest {
         emitEvent(OpenCodeEvent.PermissionRequested(permission))
         advanceUntilIdle()
 
-        assertEquals(permission, vm.dialogManager.pendingPermission.value)
+        assertEquals(permission, vm.dialogManager.pendingPermissionsByCallId.value[permission.callID])
     }
 
     @Test
@@ -166,7 +166,7 @@ class ChatViewModelTest {
         flushMessages()
 
         assertTrue(vm.currentMessages().isEmpty())
-        assertNull(vm.dialogManager.pendingPermission.value)
+        assertTrue(vm.dialogManager.pendingPermissionsByCallId.value.isEmpty())
     }
 
     @Test
@@ -183,7 +183,7 @@ class ChatViewModelTest {
         emitEvent(OpenCodeEvent.PermissionRequested(perm))
         advanceUntilIdle()
 
-        assertEquals(perm, vm.dialogManager.pendingPermission.value)
+        assertEquals(perm, vm.dialogManager.pendingPermissionsByCallId.value[perm.callID])
     }
 
     @Test
@@ -212,7 +212,7 @@ class ChatViewModelTest {
         emitEvent(OpenCodeEvent.PermissionRequested(perm))
         advanceUntilIdle()
 
-        assertNull(vm.dialogManager.pendingPermission.value)
+        assertTrue(vm.dialogManager.pendingPermissionsByCallId.value.isEmpty())
     }
 
     @Test
