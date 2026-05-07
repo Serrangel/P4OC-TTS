@@ -1,0 +1,14 @@
+{
+  "name": "opencode-textmate-fetcher",
+  "version": "1.0.0",
+  "private": true,
+  "description": "One-shot fetcher for the curated TextMate grammar bundle (oa-3rk7). Run via `node scripts/textmate/fetch_grammars.mjs`.",
+  "type": "module",
+  "scripts": {
+    "fetch": "node fetch_grammars.mjs"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "plist": "^5.0.0"
+  }
+}

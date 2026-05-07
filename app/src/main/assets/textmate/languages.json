@@ -1,0 +1,54 @@
+{
+  "grammarDefinition": [
+    {
+      "name": "env",
+      "scopeName": "source.env",
+      "grammar": "textmate/env/env.tmLanguage.json"
+    },
+    {
+      "name": "json",
+      "scopeName": "source.json",
+      "grammar": "textmate/json/json.tmLanguage.json"
+    },
+    {
+      "name": "kotlin",
+      "scopeName": "source.kotlin",
+      "grammar": "textmate/kotlin/kotlin.tmLanguage.json"
+    },
+    {
+      "name": "markdown",
+      "scopeName": "text.html.markdown",
+      "grammar": "textmate/markdown/markdown.tmLanguage.json"
+    },
+    {
+      "name": "yaml",
+      "scopeName": "source.yaml",
+      "grammar": "textmate/yaml/yaml.tmLanguage.json"
+    },
+    {
+      "name": "toml",
+      "scopeName": "source.toml",
+      "grammar": "textmate/toml/toml.tmLanguage.json"
+    },
+    {
+      "name": "xml",
+      "scopeName": "text.xml",
+      "grammar": "textmate/xml/xml.tmLanguage.json"
+    },
+    {
+      "name": "shell",
+      "scopeName": "source.shell",
+      "grammar": "textmate/shell/shell.tmLanguage.json"
+    },
+    {
+      "name": "typescript",
+      "scopeName": "source.ts",
+      "grammar": "textmate/typescript/typescript.tmLanguage.json"
+    },
+    {
+      "name": "python",
+      "scopeName": "source.python",
+      "grammar": "textmate/python/python.tmLanguage.json"
+    }
+  ]
+}

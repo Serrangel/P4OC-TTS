@@ -20,6 +20,13 @@ enum class License(
         isCopyleft = false,
         requiresRelinkingNotice = false,
     ),
+    MIT(
+        spdxId = "MIT",
+        displayName = "MIT License",
+        rawTextRes = R.raw.license_mit,
+        isCopyleft = false,
+        requiresRelinkingNotice = false,
+    ),
     LGPL_2_1(
         spdxId = "LGPL-2.1-or-later",
         displayName = "GNU Lesser General Public License, version 2.1",

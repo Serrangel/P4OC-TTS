@@ -1,28 +1,74 @@
 package dev.blazelight.p4oc.ui.screens.files.editor
 
+import android.content.Context
+import android.util.Log
 import dev.blazelight.p4oc.ui.theme.opencode.OpenCodeTheme
+import io.github.rosemoe.sora.langs.textmate.registry.FileProviderRegistry
+import io.github.rosemoe.sora.langs.textmate.registry.GrammarRegistry
 import io.github.rosemoe.sora.langs.textmate.registry.ThemeRegistry
 import io.github.rosemoe.sora.langs.textmate.registry.model.ThemeModel
+import io.github.rosemoe.sora.langs.textmate.registry.provider.AssetsFileResolver
 import org.eclipse.tm4e.core.registry.IThemeSource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Builds an in-memory TextMate theme JSON from the active [OpenCodeTheme] and
- * registers it with Sora's [ThemeRegistry]. Uses only the public API surface
- * (LGPL §6 compliance — no fork/modify of sora-editor).
+ * registers it with Sora's [ThemeRegistry], and registers the curated bundle
+ * of TextMate grammars shipped under `app/src/main/assets/textmate/` with
+ * Sora's [GrammarRegistry]. Uses only the public API surface (LGPL §6
+ * compliance — no fork/modify of sora-editor).
  *
- * Grammar registration is intentionally minimal: we register no .tmLanguage
- * files, so [io.github.rosemoe.sora.langs.textmate.TextMateLanguage] will
- * fall back to plain text. This gives us palette-mapped chrome (background,
- * foreground, line numbers, selection, current line) immediately without
- * shipping ~MBs of grammar assets. A follow-up ticket can add a curated
- * grammar bundle.
+ * Theme: generated in memory from the active [OpenCodeTheme] every time
+ * [applyTheme] is called, so the editor chrome and token colours always
+ * match the OpenCode palette without shipping any theme JSON assets.
+ *
+ * Grammars: a fixed bundle (env, json, kotlin, markdown, yaml, toml, xml,
+ * shell, typescript, python — see `textmate/SOURCES.md`) is loaded once via
+ * [ensureGrammars]. Filenames are mapped to scopes by [SoraLanguageRegistry];
+ * the editor falls back to [io.github.rosemoe.sora.lang.EmptyLanguage] only
+ * when no scope is mapped or the grammar fails to parse.
  */
 internal object SoraTextMateBootstrap {
 
+    private const val TAG = "SoraTextMateBootstrap"
+
+    /** Path to the bundled grammar manifest under `app/src/main/assets/`. */
+    private const val LANGUAGES_CONFIG = "textmate/languages.json"
+
     private val activeThemeName = AtomicReference<String?>(null)
+    private val grammarsLoaded = AtomicBoolean(false)
+
+    /**
+     * Idempotently registers the curated TextMate grammar bundle with sora's
+     * [GrammarRegistry]. Safe to call from every [io.github.rosemoe.sora.widget.CodeEditor]
+     * `factory{}`: the first call performs the work, subsequent calls are
+     * effectively no-ops via [AtomicBoolean].
+     *
+     * Failures are logged and swallowed; callers should fall back to
+     * [io.github.rosemoe.sora.lang.EmptyLanguage] if a scope cannot be resolved.
+     */
+    @Synchronized
+    fun ensureGrammars(context: Context) {
+        if (grammarsLoaded.get()) return
+        val appCtx = context.applicationContext
+        runCatching {
+            // FileProviderRegistry is a public sora singleton (no app-global
+            // state of ours). Adding the resolver again is harmless if it was
+            // added previously by another caller; we still gate behind
+            // `grammarsLoaded` so we don't re-register on the same flow.
+            FileProviderRegistry.getInstance()
+                .addFileProvider(AssetsFileResolver(appCtx.assets))
+            GrammarRegistry.getInstance().loadGrammars(LANGUAGES_CONFIG)
+        }.onFailure { t ->
+            Log.w(TAG, "Grammar bootstrap failed; editor will fall back to plain text", t)
+            // Mark as loaded anyway: retrying mid-session will not help and we
+            // don't want every editor open to repeat the same failing load.
+        }
+        grammarsLoaded.set(true)
+    }
 
     /**
      * Idempotently registers a theme derived from [theme] and marks it as the

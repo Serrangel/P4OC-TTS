@@ -13,7 +13,9 @@ import dev.blazelight.p4oc.ui.theme.opencode.OpenCodeTheme
 import io.github.rosemoe.sora.event.ContentChangeEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.lang.EmptyLanguage
+import io.github.rosemoe.sora.lang.Language
 import io.github.rosemoe.sora.langs.textmate.TextMateColorScheme
+import io.github.rosemoe.sora.langs.textmate.TextMateLanguage
 import io.github.rosemoe.sora.langs.textmate.registry.ThemeRegistry
 import io.github.rosemoe.sora.widget.CodeEditor
 
@@ -27,13 +29,13 @@ import io.github.rosemoe.sora.widget.CodeEditor
  * generation is the caller's signal that an external write happened (initial
  * load, server reload, conflict overwrite, discard).
  *
- * Language: this v1 wrapper does **not** register TextMate grammars, so the
- * editor uses [EmptyLanguage] (plain text, no token highlighting). The
- * [filename] argument is accepted now to keep the call site stable; once a
- * grammar bundle ships in a follow-up ticket the wrapper can map filename →
- * scope and switch to `TextMateLanguage`. Until then, the OpenCode theme is
- * still applied to chrome (background, foreground, line numbers, selection,
- * cursor) via [TextMateColorScheme].
+ * Language: a curated TextMate grammar bundle (see
+ * `app/src/main/assets/textmate/`) is registered once via
+ * [SoraTextMateBootstrap.ensureGrammars]. [filename] is mapped to a scope
+ * through [SoraLanguageRegistry]; if the file type is unsupported or the
+ * grammar fails to load we fall back to [EmptyLanguage] (plain text). Theme
+ * chrome (background, foreground, line numbers, selection, cursor) is applied
+ * via [TextMateColorScheme] regardless of language.
  */
 @Composable
 internal fun SoraCodeEditorView(
@@ -42,7 +44,7 @@ internal fun SoraCodeEditorView(
     showLineNumbers: Boolean,
     editable: Boolean,
     textSizeSp: Float,
-    @Suppress("UNUSED_PARAMETER") filename: String,
+    filename: String,
     modifier: Modifier = Modifier,
     onTextChange: (String) -> Unit,
     onSelectionChange: (line: Int, column: Int) -> Unit = { _, _ -> },
@@ -53,20 +55,24 @@ internal fun SoraCodeEditorView(
     val onSelectionChangeState = rememberUpdatedState(onSelectionChange)
     val lastAppliedGeneration = remember { intArrayOf(Int.MIN_VALUE) }
     val editorRef = remember { arrayOfNulls<CodeEditor>(1) }
+    // Track the last filename we applied a language for so `update{}` only
+    // swaps the editor language when the file actually changes.
+    val lastAppliedFilename = remember { arrayOfNulls<String>(1) }
 
     AndroidView(
         modifier = if (testTag != null) modifier.testTag(testTag) else modifier,
         factory = { ctx ->
-            // Ensure theme registry has our palette before constructing the scheme.
+            // Ensure theme + grammar registries are populated before we create
+            // the editor's language. Both are idempotent.
             SoraTextMateBootstrap.applyTheme(theme)
+            SoraTextMateBootstrap.ensureGrammars(ctx)
             val editor = CodeEditor(ctx).apply {
                 setTypefaceText(Typeface.MONOSPACE)
                 setTextSize(textSizeSp)
                 setTabWidth(4)
                 setLineNumberEnabled(showLineNumbers)
                 isEditable = editable
-                // Explicit plain-text language; no grammar registration in v1.
-                setEditorLanguage(EmptyLanguage())
+                setEditorLanguage(languageFor(filename))
                 applyColorScheme(this)
 
                 subscribeAlways(ContentChangeEvent::class.java) { _ ->
@@ -79,6 +85,7 @@ internal fun SoraCodeEditorView(
             }
             editor.setText(initialContent)
             lastAppliedGeneration[0] = contentGeneration
+            lastAppliedFilename[0] = filename
             editorRef[0] = editor
             editor
         },
@@ -88,6 +95,10 @@ internal fun SoraCodeEditorView(
             val targetPx = textSizeSp * editor.resources.displayMetrics.density
             if (Math.abs(editor.textSizePx - targetPx) > 0.5f) {
                 editor.setTextSize(textSizeSp)
+            }
+            if (lastAppliedFilename[0] != filename) {
+                editor.setEditorLanguage(languageFor(filename))
+                lastAppliedFilename[0] = filename
             }
             if (lastAppliedGeneration[0] != contentGeneration) {
                 editor.setText(initialContent)
@@ -115,6 +126,17 @@ private fun applyColorScheme(editor: CodeEditor) {
     runCatching {
         editor.colorScheme = TextMateColorScheme.create(ThemeRegistry.getInstance())
     }
+}
+
+/**
+ * Resolves [filename] to a sora [Language]: a [TextMateLanguage] when a scope
+ * is mapped *and* the grammar registers cleanly, otherwise [EmptyLanguage] so
+ * the editor still renders plain text without throwing.
+ */
+private fun languageFor(filename: String): Language {
+    val scope = SoraLanguageRegistry.scopeFor(filename) ?: return EmptyLanguage()
+    return runCatching { TextMateLanguage.create(scope, /* autoComplete = */ false) }
+        .getOrElse { EmptyLanguage() }
 }
 
 @Suppress("unused")

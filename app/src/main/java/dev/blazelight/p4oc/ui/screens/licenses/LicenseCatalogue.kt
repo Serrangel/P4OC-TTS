@@ -227,5 +227,52 @@ internal object LicenseCatalogue {
             license = License.APACHE_2_0,
             upstreamUrl = "https://github.com/coil-kt/coil",
         ),
+
+        // ----- TextMate grammars (curated bundle, oa-3rk7) -----
+        // Each entry below documents a third-party grammar shipped verbatim
+        // under app/src/main/assets/textmate/. SHAs and retrieval date mirror
+        // app/src/main/assets/textmate/SOURCES.md.
+
+        LicenseEntry(
+            name = "VS Code built-in grammars",
+            version = "1.94.2",
+            license = License.MIT,
+            upstreamUrl = "https://github.com/microsoft/vscode",
+            notes = "Bundled JSON, Markdown, YAML, XML, shell, TypeScript, and " +
+                "Python TextMate grammars come from microsoft/vscode " +
+                "extensions/{json,markdown-basics,yaml,xml,shellscript," +
+                "typescript-basics,python}, pinned at commit " +
+                "384ff7382de624fb94dbaf6da11977bba1ecd427 (tag 1.94.2), " +
+                "retrieved 2026-05-07. Vendored unmodified."
+        ),
+        LicenseEntry(
+            name = "fwcd/vscode-kotlin grammar",
+            version = null,
+            license = License.MIT,
+            upstreamUrl = "https://github.com/fwcd/vscode-kotlin",
+            notes = "Kotlin TextMate grammar (syntaxes/kotlin.tmLanguage.json) " +
+                "pinned at commit 4a7c1538754828c1d22a8bee8ff3400045b4352a, " +
+                "retrieved 2026-05-07. Vendored unmodified."
+        ),
+        LicenseEntry(
+            name = "mikestead/vscode-dotenv grammar",
+            version = null,
+            license = License.MIT,
+            upstreamUrl = "https://github.com/mikestead/vscode-dotenv",
+            notes = "dotenv (.env) TextMate grammar (syntaxes/env.tmLanguage) " +
+                "pinned at commit ad506a66ede7d6215cb1f2a16c169eadd414916e, " +
+                "retrieved 2026-05-07. Converted from plist to JSON via " +
+                "scripts/textmate/fetch_grammars.mjs at vendoring time; " +
+                "grammar rules unchanged."
+        ),
+        LicenseEntry(
+            name = "tamasfe/taplo TOML grammar",
+            version = "0.9.3",
+            license = License.MIT,
+            upstreamUrl = "https://github.com/tamasfe/taplo",
+            notes = "TOML TextMate grammar (editors/vscode/toml.tmLanguage.json) " +
+                "pinned at commit ab68333d17afab9319d0516b311a71bde828f900 " +
+                "(tag 0.9.3), retrieved 2026-05-07. Vendored unmodified."
+        ),
     )
 }
