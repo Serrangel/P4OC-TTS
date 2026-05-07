@@ -190,10 +190,6 @@ class FilesViewModel constructor(
         saveJob?.cancel()
         saveJob = viewModelScope.launch {
             _editState.update { it.copy(isSaving = true, saveError = null) }
-            // baselineHash: when read API exposes a hash in the future we can pass
-            // it here for true stale-write detection. Today the read DTO has no
-            // hash, so this is null and conflict detection only triggers if the
-            // repository/server returns Conflict by another path.
             val expected = if (useBaselineHash) state.baselineHash else null
             val request = FileWriteRequest(path = path, content = state.currentContent, expectedHash = expected)
             when (val result = fileRepository.writeFile(request)) {
@@ -207,7 +203,12 @@ class FilesViewModel constructor(
                             conflict = null,
                             saveError = null,
                             baselineHash = result.data.hash ?: it.baselineHash,
-                            contentGeneration = it.contentGeneration + 1,
+                            // Do not bump contentGeneration on a successful
+                            // save: the buffer did not change externally, so
+                            // bumping would needlessly clobber Sora's cursor
+                            // and undo history. Generation bumps are reserved
+                            // for loadFileContent / discardEdits / conflict
+                            // reload.
                         )
                     }
                     // Keep read-mode view in sync with what we just wrote.
@@ -359,10 +360,11 @@ data class FileEditState(
     val conflict: ConflictInfo? = null,
     val saveError: String? = null,
     /**
-     * Optional baseline hash captured at read time. Currently always null
-     * because the read DTO does not surface a hash; reserved so callers
-     * (and a future DTO field) can opt into real stale-write detection
-     * without API churn here.
+     * Optional baseline hash captured at read time. Populated by the
+     * repository (server-supplied for the standard read API, or via OFISH
+     * shell `hash_file` for OFISH-backed workspaces). When non-null it
+     * enables stale-write detection on save; when null, conflict detection
+     * relies solely on the server returning Conflict by some other path.
      */
     val baselineHash: String? = null,
 )

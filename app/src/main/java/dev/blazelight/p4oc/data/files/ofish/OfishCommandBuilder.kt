@@ -6,6 +6,27 @@ import java.util.Base64
 internal class OfishCommandBuilder(
     private val delimiterId: () -> String = { randomDelimiterId() },
 ) {
+    /**
+     * Builds a small ephemeral-session command that hashes a path on disk
+     * using the same `hash_file` shell helper used by the mutation commands,
+     * so the digest is byte-for-byte identical to what `write`/`uploadFinish`
+     * would compare against. Emits `### 200 ok hash=<hex>` on success or
+     * `### 404 missing` if the file does not exist.
+     */
+    fun hash(path: String, capabilities: OfishCapabilities): String = buildString {
+        appendLine("printf '#OFISH_HASH\\n'")
+        appendLine("P=${shellSingleQuote(path)}")
+        appendHashFunction(requireHashCommand(capabilities))
+        append(
+            """
+            if [ ! -f "${'$'}P" ]; then printf '### 404 missing\n'; exit 0; fi
+            HASH=${'$'}(hash_file "${'$'}P")
+            printf '### 200 ok hash=%s\n' "${'$'}HASH"
+            exit 0
+            """.trimIndent()
+        )
+    }
+
     fun write(
         path: String,
         content: String,

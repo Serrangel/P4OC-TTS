@@ -38,6 +38,28 @@ internal class OfishMutationClient(
 
     suspend fun mutationCapabilities(): OfishProbeResult = capabilityCache.get()
 
+    /**
+     * Compute the on-disk hash for [path] using the same shell `hash_file`
+     * helper as the mutation commands. Returns null when capabilities are
+     * unavailable, the path is invalid, the file does not exist, or the
+     * shell invocation fails. We deliberately do not fall back to a
+     * client-side digest: a hash that mismatches the server's would defeat
+     * stale-write detection.
+     */
+    suspend fun hashFile(path: String): String? {
+        val normalizedPath = normalizeMutationPath(path).getOrNull() ?: return null
+        val capabilities = availableCapabilities().getOrNull() ?: return null
+        return runCatching {
+            sessionFactory.withSession(OPERATION_HASH) { session ->
+                val status = execute(session.id, commandBuilder.hash(normalizedPath, capabilities))
+                if (status is OfishMutationStatus.Ok) status.hash else null
+            }
+        }.getOrElse { error ->
+            AppLog.w(TAG, "OFISH baseline hash failed for $path: ${error.message}")
+            null
+        }
+    }
+
     suspend fun writeFile(request: FileWriteRequest): FileOperationResult<FileWriteResult> {
         val path = normalizeMutationPath(request.path).getOrElse { error ->
             return FileOperationResult.Failed(error.message ?: INVALID_PATH_MESSAGE, error)
@@ -220,6 +242,7 @@ internal class OfishMutationClient(
         const val OPERATION_WRITE = "write"
         const val OPERATION_DELETE = "delete"
         const val OPERATION_UPLOAD = "upload"
+        const val OPERATION_HASH = "hash"
         const val UPLOAD_TOKEN_PREFIX = ".ofish.upload."
     }
 }

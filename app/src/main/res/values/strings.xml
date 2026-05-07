@@ -89,13 +89,14 @@
     <string name="settings_about_github_url">https://github.com/theblazehen/P4OC</string>
     <string name="settings_about_build_info">Build: %1$s (%2$d)</string>
     <string name="settings_licenses">Open source licenses</string>
-    <string name="settings_licenses_desc">Third-party components, license texts, and relinking notice</string>
+    <string name="settings_licenses_desc">Third-party components, license texts, and copyleft source-availability notice</string>
 
     <!-- Licenses Screen -->
     <string name="licenses_title">Open source licenses</string>
     <string name="licenses_intro">This app uses third-party open source software. Each component below is listed with its name, version, license (SPDX identifier), and a link to the upstream project. Tap a row to see notes and the full license text.</string>
-    <string name="licenses_relink_title">LGPL components — relinking notice</string>
-    <string name="licenses_relink_body">The LGPL-2.1 components listed below are dynamically linked and used solely through their public APIs, without modification, and you have the right under LGPL-2.1 §6 to replace them with a modified version. The unmodified upstream source is available at the URL on each component\'s row. To request the corresponding object code suitable for relinking against a modified version of an LGPL-covered library shipped in this app, please open an issue on the project\'s issue tracker.</string>
+    <string name="licenses_copyleft_title">Copyleft components — source availability</string>
+    <string name="licenses_copyleft_body_lgpl">LGPL-2.1 components listed below are dynamically linked and used solely through their public APIs, without modification, and you have the right under LGPL-2.1 §6 to replace them with a modified version. The unmodified upstream source is available at the URL on each component\'s row. To request the corresponding object code suitable for relinking against a modified version of an LGPL-covered library shipped in this app, please open an issue on the project\'s issue tracker.</string>
+    <string name="licenses_copyleft_body_gpl">GPL-3.0 components listed below are conveyed in object-code form alongside this app. We rely on GPL-3.0 §6(d): the Corresponding Source for the conveyed object code is publicly available at no further charge from the upstream URL on each component\'s row. The shipped object code is built from that unmodified upstream source at the pinned version shown for each entry. The project\'s issue tracker (linked below) is offered as an additional courtesy contact channel — it is not a §6(b) written offer.</string>
     <string name="licenses_request_channel_action">Open project issue tracker</string>
     <string name="licenses_request_channel_url">https://github.com/theblazehen/P4OC/issues</string>
     <string name="licenses_open_upstream">View upstream source</string>

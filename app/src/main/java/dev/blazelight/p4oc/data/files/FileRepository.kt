@@ -155,7 +155,7 @@ class WorkspaceFileRepository internal constructor(
         content = content,
         diff = diff,
         mimeType = mimeType,
-        hash = null,
+        hash = hash,
         encoding = encoding,
     )
 

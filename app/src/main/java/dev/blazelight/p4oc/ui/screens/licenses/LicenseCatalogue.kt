@@ -1,14 +1,15 @@
 package dev.blazelight.p4oc.ui.screens.licenses
 
 /**
- * Hand-curated catalogue of third-party components shipped in the app, plus
- * planned LGPL/GPL integrations that require attribution before they land.
+ * Hand-curated catalogue of third-party components shipped in the app.
  *
- * Update when bumping versions in `gradle/libs.versions.toml` or adding/removing
- * dependencies in `app/build.gradle.kts`.
+ * Update when bumping versions in `gradle/libs.versions.toml`, adding or
+ * removing dependencies in `app/build.gradle.kts`, or revising vendored
+ * snapshots tracked in `app/src/main/assets/textmate/SOURCES.md`.
  *
  * Grouping convention: copyleft (LGPL/GPL) first, then permissive components
- * grouped by ecosystem. Versions match `libs.versions.toml` at time of update.
+ * grouped by ecosystem. Versions match `libs.versions.toml` (Maven) or the
+ * pinned upstream commit (vendored grammars) at time of update.
  */
 internal object LicenseCatalogue {
 
@@ -71,16 +72,27 @@ internal object LicenseCatalogue {
             version = TERMUX,
             license = License.GPL_3_0,
             upstreamUrl = "https://github.com/termux/termux-app",
-            notes = "Used to render the in-app terminal. Distributed under GPL-3.0. " +
-                "Unmodified upstream source is available at the URL above."
+            notes = "Used to render the in-app terminal. Conveyed in object-code " +
+                "form under GPL-3.0, built unmodified from the upstream source " +
+                "at the pinned version shown above. The Corresponding Source is " +
+                "publicly available at no further charge from the upstream URL " +
+                "above; we rely on GPL-3.0 §6(d) for source availability. The " +
+                "project issue tracker is offered as an additional courtesy " +
+                "contact channel and is not a §6(b) written offer."
         ),
         LicenseEntry(
             name = "Termux terminal-emulator",
             version = TERMUX,
             license = License.GPL_3_0,
             upstreamUrl = "https://github.com/termux/termux-app",
-            notes = "Used as the in-app terminal emulator core. Distributed under " +
-                "GPL-3.0. Unmodified upstream source is available at the URL above."
+            notes = "Used as the in-app terminal emulator core. Conveyed in " +
+                "object-code form under GPL-3.0, built unmodified from the " +
+                "upstream source at the pinned version shown above. The " +
+                "Corresponding Source is publicly available at no further " +
+                "charge from the upstream URL above; we rely on GPL-3.0 §6(d) " +
+                "for source availability. The project issue tracker is offered " +
+                "as an additional courtesy contact channel and is not a §6(b) " +
+                "written offer."
         ),
 
         // ----- Kotlin / kotlinx -----
@@ -247,7 +259,7 @@ internal object LicenseCatalogue {
         ),
         LicenseEntry(
             name = "fwcd/vscode-kotlin grammar",
-            version = null,
+            version = "commit:4a7c1538",
             license = License.MIT,
             upstreamUrl = "https://github.com/fwcd/vscode-kotlin",
             notes = "Kotlin TextMate grammar (syntaxes/kotlin.tmLanguage.json) " +
@@ -256,7 +268,7 @@ internal object LicenseCatalogue {
         ),
         LicenseEntry(
             name = "mikestead/vscode-dotenv grammar",
-            version = null,
+            version = "commit:ad506a66",
             license = License.MIT,
             upstreamUrl = "https://github.com/mikestead/vscode-dotenv",
             notes = "dotenv (.env) TextMate grammar (syntaxes/env.tmLanguage) " +

@@ -21,12 +21,21 @@ internal class OfishFileRepository(
         val result = delegate.readFile(path)
         if (result !is FileOperationResult.Ok) return result
 
+        // Only hash on disk when mutations are available, content is text, and
+        // it is not a binary/base64-encoded payload. Anything else: leave the
+        // server-supplied hash (if any) untouched.
+        val content = result.data
+        if (content.type != "text" || content.encoding != null) return result
+
         val capabilities = mutationClient.mutationCapabilities()
         if (capabilities !is OfishProbeResult.Available) return result
 
-        val hashCommand = capabilities.capabilities.hashCommand ?: return result
-        val hash = OfishBaselineHasher.hash(result.data, hashCommand) ?: return result
-        return FileOperationResult.Ok(result.data.copy(hash = hash))
+        // Honest fallback: if shell hashing fails, return null hash so the
+        // caller treats this as "no baseline, no conflict detection" rather
+        // than a digest of the in-memory string that may not match on-disk
+        // bytes (CRLF/BOM/encoding quirks would yield false 409s).
+        val hash = mutationClient.hashFile(path)
+        return FileOperationResult.Ok(content.copy(hash = hash))
     }
 
     override suspend fun searchSymbols(query: String): FileOperationResult<List<Symbol>> = delegate.searchSymbols(query)

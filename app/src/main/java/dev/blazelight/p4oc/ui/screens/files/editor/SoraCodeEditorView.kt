@@ -9,7 +9,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 import dev.blazelight.p4oc.ui.theme.LocalOpenCodeTheme
-import dev.blazelight.p4oc.ui.theme.opencode.OpenCodeTheme
 import io.github.rosemoe.sora.event.ContentChangeEvent
 import io.github.rosemoe.sora.event.SelectionChangeEvent
 import io.github.rosemoe.sora.lang.EmptyLanguage
@@ -139,5 +138,4 @@ private fun languageFor(filename: String): Language {
         .getOrElse { EmptyLanguage() }
 }
 
-@Suppress("unused")
-private val _themeTypeAnchor: OpenCodeTheme? = null
+

@@ -39,19 +39,36 @@ class OfishFileRepositoryTest {
     )
 
     @Test
-    fun `readFile adds baseline hash when capabilities are available`() = runTest {
+    fun `readFile adds shell-derived baseline hash when capabilities are available`() = runTest {
+        val client = FakeOfishWorkspaceClient(
+            hashFor = mapOf("file.txt" to "deadbeefcafebabe"),
+        )
         val repository = repository(
             content = FileContent(content = "hello\n"),
             probeResult = OfishProbeResult.Available(shaCapabilities),
+            client = client,
         )
 
         val result = repository.readFile("file.txt")
 
         assertTrue(result is FileOperationResult.Ok)
-        assertEquals(
-            "5891b5b522d5df086d0ff0b110fbd9d21bb4fc7163af34d08286a2e846f6be03",
-            (result as FileOperationResult.Ok).data.hash,
+        assertEquals("deadbeefcafebabe", (result as FileOperationResult.Ok).data.hash)
+    }
+
+    @Test
+    fun `readFile honest-fallbacks to null when shell hash returns no hash`() = runTest {
+        // Default fake responds with `### 200 ok` (no hash key). Repository
+        // should NOT silently digest in-memory bytes; it should yield null.
+        val repository = repository(
+            content = FileContent(content = "hello\n"),
+            probeResult = OfishProbeResult.Available(shaCapabilities),
+            client = FakeOfishWorkspaceClient(),
         )
+
+        val result = repository.readFile("file.txt")
+
+        assertTrue(result is FileOperationResult.Ok)
+        assertNull((result as FileOperationResult.Ok).data.hash)
     }
 
     @Test
@@ -109,7 +126,10 @@ class OfishFileRepositoryTest {
     @Test
     fun `readFile returns delegate failure unchanged`() = runTest {
         val delegate = FakeRepository(readResult = FileOperationResult.Failed("boom"))
-        val repository = OfishFileRepository(delegate, mutationClient(OfishProbeResult.Available(shaCapabilities)))
+        val repository = OfishFileRepository(
+            delegate,
+            mutationClient(OfishProbeResult.Available(shaCapabilities), FakeOfishWorkspaceClient()),
+        )
 
         val result = repository.readFile("file.txt")
 
@@ -120,13 +140,16 @@ class OfishFileRepositoryTest {
     private fun repository(
         content: FileContent,
         probeResult: OfishProbeResult,
+        client: FakeOfishWorkspaceClient = FakeOfishWorkspaceClient(),
     ): OfishFileRepository = OfishFileRepository(
         delegate = FakeRepository(FileOperationResult.Ok(content)),
-        mutationClient = mutationClient(probeResult),
+        mutationClient = mutationClient(probeResult, client),
     )
 
-    private fun mutationClient(probeResult: OfishProbeResult): OfishMutationClient {
-        val client = FakeOfishWorkspaceClient()
+    private fun mutationClient(
+        probeResult: OfishProbeResult,
+        client: FakeOfishWorkspaceClient,
+    ): OfishMutationClient {
         val probe = OfishCapabilityProbe(client, OfishSessionFactory(client))
         return OfishMutationClient(
             client = client,
@@ -165,7 +188,12 @@ class OfishFileRepositoryTest {
         override suspend fun capabilities(): FileCapabilities = FileCapabilities()
     }
 
-    private class FakeOfishWorkspaceClient : OfishWorkspaceClient {
+    private class FakeOfishWorkspaceClient(
+        // Map of normalized path -> deterministic hash to return when the
+        // executed shell command targets that path. Other commands fall back
+        // to plain `### 200 ok` (no hash).
+        private val hashFor: Map<String, String> = emptyMap(),
+    ) : OfishWorkspaceClient {
         override val workspace: Workspace = Workspace(
             server = ServerRef.fromEndpoint("http://localhost:4096", "local"),
             directory = "/repo",
@@ -182,8 +210,14 @@ class OfishFileRepositoryTest {
 
         override suspend fun deleteSession(id: String): Boolean = true
 
-        override suspend fun executeShellCommand(sessionId: String, request: ShellCommandRequest): MessageWrapperDto =
-            MessageWrapperDto(
+        override suspend fun executeShellCommand(sessionId: String, request: ShellCommandRequest): MessageWrapperDto {
+            val responseText = if (request.command.contains("#OFISH_HASH")) {
+                val path = hashFor.keys.firstOrNull { request.command.contains("P='$it'") }
+                if (path != null) "### 200 ok hash=${hashFor.getValue(path)}" else "### 200 ok"
+            } else {
+                "### 200 ok"
+            }
+            return MessageWrapperDto(
                 info = MessageInfoDto(
                     id = "message",
                     sessionID = sessionId,
@@ -196,10 +230,11 @@ class OfishFileRepositoryTest {
                         sessionID = sessionId,
                         messageID = "message",
                         type = "text",
-                        text = "### 200 ok",
+                        text = responseText,
                     ),
                 ),
             )
+        }
 
         override suspend fun listSessionsCurrentWorkspace(limit: Int?): List<SessionDto> = emptyList()
 

@@ -70,15 +70,23 @@ fun LicensesScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             item(key = "header_intro") { IntroNote() }
-            item(key = "header_relink") {
-                RelinkingNote(
-                    onOpenRequestChannel = {
-                        openUrl(
-                            context,
-                            context.getString(R.string.licenses_request_channel_url),
-                        )
-                    },
-                )
+            // Show the copyleft source-availability notice whenever any
+            // shipped entry triggers it (LGPL relinking + GPL conveying
+            // source). Hidden entirely when no copyleft components ship.
+            val hasCopyleftSourceNotice = entries.any { it.license.requiresSourceNotice }
+            if (hasCopyleftSourceNotice) {
+                item(key = "header_copyleft") {
+                    CopyleftSourceNote(
+                        showLgpl = entries.any { it.license == License.LGPL_2_1 },
+                        showGpl = entries.any { it.license == License.GPL_3_0 },
+                        onOpenRequestChannel = {
+                            openUrl(
+                                context,
+                                context.getString(R.string.licenses_request_channel_url),
+                            )
+                        },
+                    )
+                }
             }
             items(
                 items = entries,
@@ -115,19 +123,32 @@ private fun IntroNote() {
 }
 
 @Composable
-private fun RelinkingNote(onOpenRequestChannel: () -> Unit) {
+private fun CopyleftSourceNote(
+    showLgpl: Boolean,
+    showGpl: Boolean,
+    onOpenRequestChannel: () -> Unit,
+) {
     val theme = LocalOpenCodeTheme.current
     TuiCard {
         Text(
-            text = stringResource(R.string.licenses_relink_title),
+            text = stringResource(R.string.licenses_copyleft_title),
             style = MaterialTheme.typography.titleSmall,
             color = theme.text,
         )
-        Text(
-            text = stringResource(R.string.licenses_relink_body),
-            style = MaterialTheme.typography.bodySmall,
-            color = theme.textMuted,
-        )
+        if (showLgpl) {
+            Text(
+                text = stringResource(R.string.licenses_copyleft_body_lgpl),
+                style = MaterialTheme.typography.bodySmall,
+                color = theme.textMuted,
+            )
+        }
+        if (showGpl) {
+            Text(
+                text = stringResource(R.string.licenses_copyleft_body_gpl),
+                style = MaterialTheme.typography.bodySmall,
+                color = theme.textMuted,
+            )
+        }
         TuiTextButton(
             onClick = onOpenRequestChannel,
             modifier = Modifier.testTag("licenses_request_channel_button"),
@@ -300,7 +321,10 @@ private fun LicenseDetail(
 }
 
 private fun buildSubtitle(entry: LicenseEntry): String {
-    val versionPart = entry.version ?: "planned"
+    // Shipped entries always carry a version (Maven version or "commit:<sha>"
+    // for vendored snapshots). null is reserved for documented-but-not-shipped
+    // entries; show "—" rather than misleadingly labelling them "planned".
+    val versionPart = entry.version ?: "—"
     return "$versionPart  •  ${entry.license.spdxId}"
 }
 
