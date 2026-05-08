@@ -18,6 +18,10 @@ android {
     namespace = "dev.blazelight.p4oc"
     compileSdk = 36
 
+    lint {
+        baseline = file("lint-baseline.xml")
+    }
+
     signingConfigs {
         create("release") {
             val storeFilePath = localProperties.getProperty("RELEASE_STORE_FILE")
