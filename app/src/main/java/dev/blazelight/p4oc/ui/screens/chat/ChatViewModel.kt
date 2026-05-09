@@ -156,11 +156,19 @@ class ChatViewModel constructor(
         viewModelScope.launch {
             // Observe message changes for TTS streaming
             var lastProcessedTextLength = 0
+            var lastProcessedMessageId: String? = null
+
             messages.collect { messageList ->
                 if (!voiceSettings.value.enabled || !voiceSettings.value.readWhileStreaming) return@collect
 
                 val lastMsgWithParts = messageList.lastOrNull()
                 val lastMsg = lastMsgWithParts?.message as? Message.Assistant ?: return@collect
+
+                // Reset length if it's a new message
+                if (lastProcessedMessageId != lastMsg.id) {
+                    lastProcessedMessageId = lastMsg.id
+                    lastProcessedTextLength = 0
+                }
                 val currentText = lastMsgWithParts.parts.filterIsInstance<Part.Text>().joinToString("") { it.text }
 
                 // Detect if the message is new or has been reset

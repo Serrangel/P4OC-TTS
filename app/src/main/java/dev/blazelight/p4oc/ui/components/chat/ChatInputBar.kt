@@ -256,7 +256,7 @@ fun ChatInputBar(
                                     .testTag("chat_mic_button")
                             ) {
                                 Text(
-                                    text = if (isListening) "■" else "m",
+                                    text = if (isListening) "■" else "○",
                                     color = if (isListening) theme.error else theme.accent,
                                     fontFamily = FontFamily.Monospace,
                                     style = MaterialTheme.typography.titleMedium
