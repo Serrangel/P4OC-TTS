@@ -327,6 +327,7 @@ class ChatViewModel constructor(
                 }
                 .collect { scopedEvent ->
                     AppLog.d(TAG, "observeEvents: Received ${scopedEvent.event::class.simpleName}")
+                    sessionRepository.acceptEvent(scopedEvent.event)
                     handleEvent(scopedEvent.event)
                 }
         }
