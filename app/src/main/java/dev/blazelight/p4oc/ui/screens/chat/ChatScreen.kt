@@ -22,6 +22,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import org.koin.androidx.compose.koinViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.blazelight.p4oc.R
@@ -84,7 +87,19 @@ fun ChatScreen(
     val pickerCurrentPath by viewModel.filePickerManager.pickerCurrentPath.collectAsStateWithLifecycle()
     val isPickerLoading by viewModel.filePickerManager.isPickerLoading.collectAsStateWithLifecycle()
     val pickerError by viewModel.filePickerManager.pickerError.collectAsStateWithLifecycle()
+    val voiceSettings by viewModel.voiceSettings.collectAsStateWithLifecycle()
+    val voiceState by viewModel.voiceState.collectAsStateWithLifecycle()
     
+    val context = LocalContext.current
+    val micPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            if (isGranted) {
+                viewModel.toggleListening()
+            }
+        }
+    )
+
     // Notify parent when session is loaded
     LaunchedEffect(uiState.session) {
         uiState.session?.let { session ->
@@ -242,7 +257,19 @@ fun ChatScreen(
                         onRemoveAttachment = viewModel.filePickerManager::detachFile,
                         commands = uiState.commands,
                         onCommandSelected = { /* Command text is already updated via onValueChange */ },
-                        requestFocus = isActiveTab
+                        requestFocus = isActiveTab,
+                        isVoiceModeEnabled = voiceSettings.enabled,
+                        isListening = voiceState.isListening,
+                        isSpeaking = voiceState.isSpeaking,
+                        onToggleListening = {
+                            if (!voiceState.isListening &&
+                                androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                micPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            } else {
+                                viewModel.toggleListening()
+                            }
+                        },
+                        onStopSpeaking = viewModel::stopSpeaking
                     )
                 }
             }
