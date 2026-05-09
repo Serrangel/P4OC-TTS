@@ -206,6 +206,28 @@ class ChatViewModel constructor(
                 }
             }
         }
+
+        viewModelScope.launch {
+            voiceManager.headsetEvents.collect { event ->
+                if (!voiceSettings.value.enabled) return@collect
+
+                when (event) {
+                    dev.blazelight.p4oc.core.voice.HeadsetEvent.ToggleListening -> toggleListening()
+                    dev.blazelight.p4oc.core.voice.HeadsetEvent.SendMessage -> {
+                        // Only send if not currently sending
+                        if (!_uiState.value.isSending) {
+                            // If it's listening, stop listening first
+                            if (voiceState.value.isListening) {
+                                voiceManager.stopListening()
+                                // Allow time for finalResult to populate via STT callback
+                                kotlinx.coroutines.delay(500)
+                            }
+                            sendMessage()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     override fun onCleared() {

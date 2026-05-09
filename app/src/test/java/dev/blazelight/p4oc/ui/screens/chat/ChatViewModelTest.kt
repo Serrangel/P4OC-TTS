@@ -353,6 +353,7 @@ class ChatViewModelTest {
     private fun TestScope.createViewModel(): ChatViewModel {
         val voiceManagerMock = mockk<VoiceManager>(relaxed = true)
         io.mockk.every { voiceManagerMock.voiceState } returns kotlinx.coroutines.flow.MutableStateFlow(dev.blazelight.p4oc.core.voice.VoiceState())
+        io.mockk.every { voiceManagerMock.headsetEvents } returns kotlinx.coroutines.flow.MutableSharedFlow()
         val vm = ChatViewModel(
             savedStateHandle = SavedStateHandle(mapOf(Screen.Chat.ARG_SESSION_ID to "session-1")),
             workspaceClient = workspaceClient,
