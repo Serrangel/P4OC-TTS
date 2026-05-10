@@ -20,6 +20,7 @@ import dev.blazelight.p4oc.ui.components.TuiAlertDialog
 import dev.blazelight.p4oc.ui.components.TuiButton
 import dev.blazelight.p4oc.ui.components.TuiLoadingScreen
 import dev.blazelight.p4oc.ui.components.TuiOutlinedButton
+import dev.blazelight.p4oc.ui.components.TuiSnackbar
 import dev.blazelight.p4oc.ui.components.TuiTextButton
 import dev.blazelight.p4oc.ui.components.TuiTopBar
 import dev.blazelight.p4oc.ui.components.chat.InlineDiffViewer
@@ -205,7 +206,7 @@ fun FileViewerScreen(
             }
 
             editState.saveError?.let { msg ->
-                Snackbar(
+                TuiSnackbar(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(Spacing.md),
