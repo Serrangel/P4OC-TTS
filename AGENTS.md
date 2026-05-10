@@ -28,6 +28,15 @@ export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 ./gradlew :app:compileDebugKotlin
 ```
 
+## Static analysis
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+./gradlew :app:detekt
+```
+
+Detekt uses `detekt.yml` plus `app/detekt-baseline.xml`; fix or ticket new findings rather than deleting framework-, Compose-, serialization-, reflection-, or resource-referenced code without verification.
+
 ## Key source locations
 
 | What | Where |
