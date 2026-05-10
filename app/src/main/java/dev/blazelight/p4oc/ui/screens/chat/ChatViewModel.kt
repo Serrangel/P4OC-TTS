@@ -451,6 +451,22 @@ class ChatViewModel constructor(
             when (result) {
                 is ApiResult.Success -> {
                     AppLog.d(TAG, "sendMessage: Async call succeeded, waiting for SSE events")
+
+                    // sendMessageAsync returns Unit, not a response object.
+                    // To avoid getting stuck in isSending = true (e.g. if SSE event already arrived
+                    // or gets dropped), we should probably clear the isSending flag after a timeout
+                    // OR trigger a refresh of the session.
+                    // Actually, let's just trigger a loadSession() to ensure we have the latest state,
+                    // and clear isSending after a short delay just in case.
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(2000)
+                        if (_uiState.value.isSending) {
+                            AppLog.w(TAG, "sendMessage: isSending stuck, force clearing and reloading")
+                            _uiState.update { it.copy(isSending = false) }
+                            loadSession()
+                            loadMessages()
+                        }
+                    }
                 }
                 is ApiResult.Error -> {
                     _uiState.update {
@@ -522,6 +538,14 @@ class ChatViewModel constructor(
             when (result) {
                 is ApiResult.Success -> {
                     AppLog.d(TAG, "sendQueuedMessageIfAny: Queued message sent successfully")
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(2000)
+                        if (_uiState.value.isSending) {
+                            _uiState.update { it.copy(isSending = false) }
+                            loadSession()
+                            loadMessages()
+                        }
+                    }
                 }
                 is ApiResult.Error -> {
                     _uiState.update {
