@@ -226,8 +226,10 @@ class ConnectionManager constructor(
         base.newBuilder()
             .readTimeout(60, TimeUnit.SECONDS)
             .addInterceptor(HttpLoggingInterceptor().apply {
-                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
+                level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS else HttpLoggingInterceptor.Level.NONE
                 redactHeader("Authorization")
+                redactHeader("Cookie")
+                redactHeader("Set-Cookie")
             })
             .build()
 
@@ -237,6 +239,8 @@ class ConnectionManager constructor(
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.HEADERS else HttpLoggingInterceptor.Level.NONE
                 redactHeader("Authorization")
+                redactHeader("Cookie")
+                redactHeader("Set-Cookie")
             })
             .build()
 
