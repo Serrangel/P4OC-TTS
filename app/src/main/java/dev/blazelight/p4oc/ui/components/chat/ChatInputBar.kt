@@ -54,7 +54,12 @@ fun ChatInputBar(
     onRemoveAttachment: (String) -> Unit = {},
     commands: List<Command> = emptyList(),
     onCommandSelected: (Command) -> Unit = {},
-    requestFocus: Boolean = false
+    requestFocus: Boolean = false,
+    isVoiceModeEnabled: Boolean = false,
+    isListening: Boolean = false,
+    isSpeaking: Boolean = false,
+    onToggleListening: () -> Unit = {},
+    onStopSpeaking: () -> Unit = {}
 ) {
     val theme = LocalOpenCodeTheme.current
     val focusRequester = remember { FocusRequester() }
@@ -224,6 +229,40 @@ fun ChatInputBar(
                             cursorBrush = SolidColor(theme.accent),
                             maxLines = 4
                         )
+                    }
+
+                    if (isVoiceModeEnabled) {
+                        if (isSpeaking) {
+                             IconButton(
+                                onClick = onStopSpeaking,
+                                modifier = Modifier
+                                    .size(Sizing.iconButtonMd)
+                                    .semantics { contentDescription = "Stop speaking" }
+                                    .testTag("chat_stop_speaking_button")
+                            ) {
+                                Text(
+                                    text = "x",
+                                    color = theme.error,
+                                    fontFamily = FontFamily.Monospace,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                        } else {
+                            IconButton(
+                                onClick = onToggleListening,
+                                modifier = Modifier
+                                    .size(Sizing.iconButtonMd)
+                                    .semantics { contentDescription = "Toggle listening" }
+                                    .testTag("chat_mic_button")
+                            ) {
+                                Text(
+                                    text = if (isListening) "■" else "○",
+                                    color = if (isListening) theme.error else theme.accent,
+                                    fontFamily = FontFamily.Monospace,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                        }
                     }
 
                     if (isBusy) {

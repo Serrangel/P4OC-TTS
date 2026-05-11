@@ -257,7 +257,10 @@ class ChatViewModelTest {
 
         advanceUntilIdle()
         assertEquals("", vm.uiState.value.inputText)
-        assertTrue(vm.uiState.value.isSending)
+        // With the new 2000ms timeout fix, advanceUntilIdle() will also execute the delayed timeout
+        // which clears the isSending flag and calls loadSession()/loadMessages().
+        // Thus, isSending is expected to be false here.
+        assertFalse(vm.uiState.value.isSending)
     }
 
     @Test
@@ -353,6 +356,7 @@ class ChatViewModelTest {
     private fun TestScope.createViewModel(): ChatViewModel {
         val voiceManagerMock = mockk<VoiceManager>(relaxed = true)
         io.mockk.every { voiceManagerMock.voiceState } returns kotlinx.coroutines.flow.MutableStateFlow(dev.blazelight.p4oc.core.voice.VoiceState())
+        io.mockk.every { voiceManagerMock.headsetEvents } returns kotlinx.coroutines.flow.MutableSharedFlow()
         val vm = ChatViewModel(
             savedStateHandle = SavedStateHandle(mapOf(Screen.Chat.ARG_SESSION_ID to "session-1")),
             workspaceClient = workspaceClient,
