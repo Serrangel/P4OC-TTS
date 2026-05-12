@@ -9,12 +9,8 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import dev.blazelight.p4oc.core.log.AppLog
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -26,64 +22,11 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener, 
     private var speechRecognizer: SpeechRecognizer? = null
     private var isTtsInitialized = false
 
-    private var mediaSession: MediaSessionCompat? = null
-
     private val _voiceState = MutableStateFlow(VoiceState())
     val voiceState: StateFlow<VoiceState> = _voiceState.asStateFlow()
 
-    private val _headsetEvents = MutableSharedFlow<HeadsetEvent>(extraBufferCapacity = 1)
-    val headsetEvents: SharedFlow<HeadsetEvent> = _headsetEvents
-
     init {
         initTts()
-        initMediaSession()
-    }
-
-    private fun initMediaSession() {
-        try {
-            mediaSession = MediaSessionCompat(context, "VoiceManagerSession").apply {
-                // Set the session's callbacks to handle media buttons
-                setCallback(object : MediaSessionCompat.Callback() {
-                    override fun onPlay() {
-                        super.onPlay()
-                        _headsetEvents.tryEmit(HeadsetEvent.ToggleListening)
-                    }
-
-                    override fun onPause() {
-                        super.onPause()
-                        _headsetEvents.tryEmit(HeadsetEvent.ToggleListening)
-                    }
-
-                    override fun onSkipToNext() {
-                        super.onSkipToNext()
-                        _headsetEvents.tryEmit(HeadsetEvent.SendMessage)
-                    }
-
-                    // Some headsets send onFastForward instead of skipToNext for double click
-                    override fun onFastForward() {
-                        super.onFastForward()
-                        _headsetEvents.tryEmit(HeadsetEvent.SendMessage)
-                    }
-                })
-
-                // We must indicate that we are "playing" to reliably capture media buttons on some devices
-                val state = PlaybackStateCompat.Builder()
-                    .setActions(
-                        PlaybackStateCompat.ACTION_PLAY or
-                        PlaybackStateCompat.ACTION_PAUSE or
-                        PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                        PlaybackStateCompat.ACTION_FAST_FORWARD
-                    )
-                    .setState(PlaybackStateCompat.STATE_PLAYING, PlaybackStateCompat.PLAYBACK_POSITION_UNKNOWN, 1.0f)
-                    .build()
-                setPlaybackState(state)
-
-                isActive = true
-            }
-        } catch (e: Exception) {
-            AppLog.e(TAG, "Error initializing MediaSession: ${e.message}", e)
-        }
     }
 
     private fun initTts() {
@@ -246,9 +189,6 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener, 
 
         speechRecognizer?.destroy()
         speechRecognizer = null
-
-        mediaSession?.release()
-        mediaSession = null
     }
 
     private fun getErrorText(errorCode: Int): String {
@@ -269,11 +209,6 @@ class VoiceManager(private val context: Context) : TextToSpeech.OnInitListener, 
     companion object {
         private const val TAG = "VoiceManager"
     }
-}
-
-enum class HeadsetEvent {
-    ToggleListening,
-    SendMessage
 }
 
 data class VoiceState(

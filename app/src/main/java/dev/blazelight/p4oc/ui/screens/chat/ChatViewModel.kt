@@ -206,28 +206,6 @@ class ChatViewModel constructor(
                 }
             }
         }
-
-        viewModelScope.launch {
-            voiceManager.headsetEvents.collect { event ->
-                if (!voiceSettings.value.enabled) return@collect
-
-                when (event) {
-                    dev.blazelight.p4oc.core.voice.HeadsetEvent.ToggleListening -> toggleListening()
-                    dev.blazelight.p4oc.core.voice.HeadsetEvent.SendMessage -> {
-                        // Only send if not currently sending
-                        if (!_uiState.value.isSending) {
-                            // If it's listening, stop listening first
-                            if (voiceState.value.isListening) {
-                                voiceManager.stopListening()
-                                // Allow time for finalResult to populate via STT callback
-                                kotlinx.coroutines.delay(500)
-                            }
-                            sendMessage()
-                        }
-                    }
-                }
-            }
-        }
     }
 
     override fun onCleared() {
@@ -327,7 +305,6 @@ class ChatViewModel constructor(
                 }
                 .collect { scopedEvent ->
                     AppLog.d(TAG, "observeEvents: Received ${scopedEvent.event::class.simpleName}")
-                    sessionRepository.acceptEvent(scopedEvent.event)
                     handleEvent(scopedEvent.event)
                 }
         }
@@ -451,22 +428,6 @@ class ChatViewModel constructor(
             when (result) {
                 is ApiResult.Success -> {
                     AppLog.d(TAG, "sendMessage: Async call succeeded, waiting for SSE events")
-
-                    // sendMessageAsync returns Unit, not a response object.
-                    // To avoid getting stuck in isSending = true (e.g. if SSE event already arrived
-                    // or gets dropped), we should probably clear the isSending flag after a timeout
-                    // OR trigger a refresh of the session.
-                    // Actually, let's just trigger a loadSession() to ensure we have the latest state,
-                    // and clear isSending after a short delay just in case.
-                    viewModelScope.launch {
-                        kotlinx.coroutines.delay(2000)
-                        if (_uiState.value.isSending) {
-                            AppLog.w(TAG, "sendMessage: isSending stuck, force clearing and reloading")
-                            _uiState.update { it.copy(isSending = false) }
-                            loadSession()
-                            loadMessages()
-                        }
-                    }
                 }
                 is ApiResult.Error -> {
                     _uiState.update {
@@ -538,14 +499,6 @@ class ChatViewModel constructor(
             when (result) {
                 is ApiResult.Success -> {
                     AppLog.d(TAG, "sendQueuedMessageIfAny: Queued message sent successfully")
-                    viewModelScope.launch {
-                        kotlinx.coroutines.delay(2000)
-                        if (_uiState.value.isSending) {
-                            _uiState.update { it.copy(isSending = false) }
-                            loadSession()
-                            loadMessages()
-                        }
-                    }
                 }
                 is ApiResult.Error -> {
                     _uiState.update {
